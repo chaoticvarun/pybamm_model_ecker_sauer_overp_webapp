@@ -999,7 +999,7 @@ def create_parameter_function_plots(param_values: pybamm.ParameterValues):
         rows=num_rows,
         cols=num_cols,
         subplot_titles=[cfg["title"] for cfg in subplot_configs],
-        vertical_spacing=0.08,
+        vertical_spacing=0.14,
         horizontal_spacing=0.08,
     )
     
@@ -1631,7 +1631,7 @@ if st.session_state.simulations:
             rows=num_c_rates,
             cols=2,
             subplot_titles=subplot_titles,
-            vertical_spacing=0.08,
+            vertical_spacing=0.14,
             horizontal_spacing=0.1,
         )
         

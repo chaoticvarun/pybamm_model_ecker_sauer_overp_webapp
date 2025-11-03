@@ -87,7 +87,15 @@ st.set_page_config(
     layout="wide"
 )
 
+# Get commit hash for version tracking (helps verify deployments)
+import subprocess
+try:
+    commit_hash = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=os.path.dirname(os.path.abspath(__file__)), stderr=subprocess.DEVNULL, text=True).strip()
+except:
+    commit_hash = "unknown"
+
 st.title("🔋 PyBaMM Battery Parameter Updater & Overpotential Visualization")
+st.caption(f"📌 Version: {commit_hash} | Last updated: 2025-11-03 | Vertical spacing: 0.14")
 
 with st.expander("ℹ️ How to Use", expanded=False):
     st.markdown("""

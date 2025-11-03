@@ -1337,6 +1337,18 @@ if st.session_state.simulations:
         ("X-averaged battery solid phase ohmic losses [V]", "Ohmic electrode overpotential"),
     ]
     
+    STACK_COMPONENTS_SPLIT = [
+        ("Battery negative particle concentration overpotential [V]", "Negative particle concentration overpotential"),
+        ("Battery positive particle concentration overpotential [V]", "Positive particle concentration overpotential"),
+        ("X-averaged battery negative reaction overpotential [V]", "Negative reaction overpotential"),
+        ("Lithium metal interface reaction overpotential [V]", "Lithium metal reaction overpotential"),
+        ("X-averaged battery positive reaction overpotential [V]", "Positive reaction overpotential"),
+        ("X-averaged battery concentration overpotential [V]", "Electrolyte concentration overpotential"),
+        ("X-averaged battery electrolyte ohmic losses [V]", "Ohmic electrolyte overpotential"),
+        ("X-averaged battery negative solid phase ohmic losses [V]", "Ohmic negative electrode overpotential"),
+        ("X-averaged battery positive solid phase ohmic losses [V]", "Ohmic positive electrode overpotential"),
+    ]
+    
     COLOR_PALETTE = [
         "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
         "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
@@ -1443,33 +1455,56 @@ if st.session_state.simulations:
                 col=col_index,
             )
             top = ocv.copy()  # Start from OCV (same as combined plot)
-            components = STACK_COMPONENTS_COMBINED
+            components = STACK_COMPONENTS_SPLIT
         
         typically_positive_vars = ["Lithium metal interface reaction overpotential [V]"]
         positive_components = []
         negative_components = []
         
+        # Process components in the exact order from STACK_COMPONENTS_COMBINED/SPLIT
         for idx, (var_name, display) in enumerate(components):
             try:
                 values = solution[var_name].entries
             except KeyError:
+                print(f"Warning: '{var_name}' not available for row {row_index}, col {col_index}.")
                 continue
             if "negative" in var_name.lower():
                 values = -values
+            # If spatial dimensions exist, take the mean
             if values.ndim > 1:
                 values = np.mean(values, axis=0)
             
+            # Categorize based on component type (not value) for consistency across C-rates
             if var_name in typically_positive_vars:
                 positive_components.append((idx, var_name, display, values))
             else:
                 negative_components.append((idx, var_name, display, values))
         
+        # Sort by original index to maintain consistent order across all C-rates
         positive_components.sort(key=lambda x: x[0])
         negative_components.sort(key=lambda x: x[0])
         
-        ocv_top = ocv.copy()
+        # Calculate sums: only include actual positive contributions for stacking
+        sum_positive_actual = np.zeros_like(ocv)
+        sum_negative_actual = np.zeros_like(ocv)
+        
+        for _, _, _, values in positive_components:
+            # Only count positive contributions
+            positive_part = np.maximum(values, 0)
+            negative_part = np.minimum(values, 0)
+            sum_positive_actual = sum_positive_actual + positive_part
+            sum_negative_actual = sum_negative_actual + negative_part
+        
+        for _, _, _, values in negative_components:
+            # All negative components contribute to negative sum
+            sum_negative_actual = sum_negative_actual + values
+        
+        # Use the same stacking logic for both combined and split plots
+        # Stack positive components UPWARD from OCV (above OCV)
+        ocv_top = ocv.copy()  # Start from OCV
         for _, var_name, display, values in positive_components:
             color = next(color_iter, "#17becf")
+            # Stack: new level = current top + value (can be positive or negative)
             new_top = ocv_top + values
             fig.add_trace(
                 go.Scatter(x=time_hours, y=new_top, fill="tonexty", mode="lines",
@@ -1483,21 +1518,32 @@ if st.session_state.simulations:
             )
             ocv_top = new_top
         
+        # Calculate starting point for negatives: OCV + all contributions from positive category
         ocv_plus_positive_category = ocv.copy()
         for _, _, _, values in positive_components:
             ocv_plus_positive_category = ocv_plus_positive_category + values
         
+        # Before stacking negative components, add a dummy trace
+        # This ensures negative components stack from the correct starting point
         if negative_components:
             fig.add_trace(
-                go.Scatter(x=time_hours, y=ocv_plus_positive_category,
-                          mode="lines", line=dict(color="rgba(0,0,0,0)", width=0),
-                          hoverinfo="skip", showlegend=False),
+                go.Scatter(
+                    x=time_hours,
+                    y=ocv_plus_positive_category,
+                    mode="lines",
+                    line=dict(color="rgba(0,0,0,0)", width=0),
+                    hoverinfo="skip",
+                    showlegend=False,
+                ),
                 row=row_index, col=col_index,
             )
         
-        top = ocv_plus_positive_category.copy()
+        # Stack negative components DOWNWARD from OCV + positive category contributions
+        # This ensures the bottom of the negative stack equals battery voltage
+        top = ocv_plus_positive_category.copy()  # Start from OCV + contributions from positive category
         for _, var_name, display, values in negative_components:
             color = next(color_iter, "#17becf")
+            # Stack downward: new bottom = current top + negative value
             new_bottom = top + values
             fig.add_trace(
                 go.Scatter(x=time_hours, y=new_bottom, fill="tonexty", mode="lines",
@@ -1509,7 +1555,7 @@ if st.session_state.simulations:
                           customdata=values),
                 row=row_index, col=col_index,
             )
-            top = new_bottom
+            top = new_bottom  # Update for next negative component
         
         # After stacking, 'top' should equal battery voltage
         # Calculate final voltage: OCV + all components (regardless of category)

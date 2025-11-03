@@ -1355,6 +1355,8 @@ if st.session_state.simulations:
         
         if not split:
             ocv = solution["Battery open-circuit voltage [V]"].entries
+            if ocv.ndim > 1:
+                ocv = np.mean(ocv, axis=0)
             initial_ocv = ocv[0]
             baseline = np.full_like(time_hours, initial_ocv, dtype=float)
             fig.add_trace(
@@ -1375,24 +1377,72 @@ if st.session_state.simulations:
         else:
             ocp_n = solution["Battery negative electrode bulk open-circuit potential [V]"].entries
             ocp_p = solution["Battery positive electrode bulk open-circuit potential [V]"].entries
+            # Handle spatial dimensions
+            if ocp_n.ndim > 1:
+                ocp_n = np.mean(ocp_n, axis=0)
+            if ocp_p.ndim > 1:
+                ocp_p = np.mean(ocp_p, axis=0)
             ocv = ocp_p - ocp_n
-            zero_line = np.zeros_like(time_hours)
+            
+            # For split plot, show individual OCPs but use same stacking logic as combined
+            # Negative OCP is shown as reference at 0V
+            neg_ocp_relative = np.zeros_like(time_hours)  # Negative OCP as reference (0V)
+            
+            # Add invisible baseline for filling
             fig.add_trace(
-                go.Scatter(x=time_hours, y=zero_line, mode="lines",
-                          line=dict(color="#2ca02c", width=1.2),
-                          name="Negative open-circuit potential (0 V)",
-                          legendgroup="neg_ocp", showlegend=(row_index == 1 and col_index == 1)),
+                go.Scatter(
+                    x=time_hours,
+                    y=neg_ocp_relative,
+                    mode="lines",
+                    line=dict(color="rgba(0,0,0,0)"),
+                    hoverinfo="skip",
+                    showlegend=False,
+                ),
+                row=row_index,
+                col=col_index,
+            )
+            # Show negative OCP (reference at 0V)
+            fig.add_trace(
+                go.Scatter(
+                    x=time_hours,
+                    y=neg_ocp_relative,
+                    fill="tonexty",
+                    mode="lines",
+                    line=dict(color="#2ca02c", width=1.2),
+                    fillcolor="rgba(44,160,44,0.35)",
+                    name="Negative open-circuit potential (0 V)",
+                    legendgroup="neg_ocp",
+                    showlegend=(row_index == 1 and col_index == 1),
+                ),
+                row=row_index,
+                col=col_index,
+            )
+            # Use OCV as the baseline for stacking (same as combined plot)
+            # OCV = positive OCP - negative OCP, which is what we stack from
+            initial_ocv = ocv[0] if hasattr(ocv, '__iter__') and len(ocv) > 0 else ocv
+            baseline = np.full_like(time_hours, initial_ocv, dtype=float)
+            fig.add_trace(
+                go.Scatter(x=time_hours, y=baseline, mode="lines",
+                          line=dict(color="rgba(0,0,0,0)"), hoverinfo="skip", showlegend=False),
                 row=row_index, col=col_index,
             )
+            # Show positive OCP as OCV (top layer, same as combined plot)
             fig.add_trace(
-                go.Scatter(x=time_hours, y=ocv, fill="tonexty", mode="lines",
-                          line=dict(color="#9467bd", width=0.8),
-                          fillcolor="rgba(148,103,189,0.35)",
-                          name="Positive open-circuit potential",
-                          legendgroup="pos_ocp", showlegend=(row_index == 1 and col_index == 1)),
-                row=row_index, col=col_index,
+                go.Scatter(
+                    x=time_hours,
+                    y=ocv,
+                    fill="tonexty",
+                    mode="lines",
+                    line=dict(color="#9467bd", width=0.8),
+                    fillcolor="rgba(148,103,189,0.35)",
+                    name="Positive open-circuit potential",
+                    legendgroup="pos_ocp",
+                    showlegend=(row_index == 1 and col_index == 1),
+                ),
+                row=row_index,
+                col=col_index,
             )
-            top = ocv.copy()
+            top = ocv.copy()  # Start from OCV (same as combined plot)
             components = STACK_COMPONENTS_COMBINED
         
         typically_positive_vars = ["Lithium metal interface reaction overpotential [V]"]

@@ -7,6 +7,7 @@ This Streamlit web application allows you to:
 3. Run simulations with updated parameters
 4. Visualize voltage component breakdowns (overpotentials) interactively
 
+Last updated: 2025-11-03
 To run this app:
     streamlit run half_cell_ecker_sauer_paramupdate_overp.py
 

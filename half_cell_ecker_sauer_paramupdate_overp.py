@@ -1511,28 +1511,63 @@ if st.session_state.simulations:
             )
             top = new_bottom
         
+        # After stacking, 'top' should equal battery voltage
+        # Calculate final voltage: OCV + all components (regardless of category)
+        # Same calculation for both combined and split plots
+        calculated_voltage = ocv.copy()
+        for _, _, _, values in positive_components:
+            calculated_voltage = calculated_voltage + values
+        for _, _, _, values in negative_components:
+            calculated_voltage = calculated_voltage + values
+        # 'top' should equal calculated_voltage (they should be identical)
+        
+        # After stacking all overpotentials, 'top' (which equals calculated_voltage) should equal battery voltage
+        # The battery voltage line should be at the bottom of the stack
         if voltage.ndim > 1:
             voltage_flat = np.mean(voltage, axis=0)
         else:
             voltage_flat = voltage
         
+        # Calculate the difference to check for mismatches
+        max_diff = np.max(np.abs(calculated_voltage - voltage_flat))
+        mean_diff = np.mean(np.abs(calculated_voltage - voltage_flat))
+        
+        if max_diff > 1e-3:  # If difference > 1mV, print warning
+            c_rate_label = f"row {row_index}, col {col_index}"
+            print(f"Warning [{c_rate_label}]: Stack bottom doesn't match PyBaMM battery voltage.")
+            print(f"  Calculated (OCV + overpotentials): {np.mean(calculated_voltage):.6f} V")
+            print(f"  PyBaMM 'Battery voltage [V]': {np.mean(voltage_flat):.6f} V")
+            print(f"  Max difference: {max_diff:.6f} V, Mean difference: {mean_diff:.6f} V")
+            print(f"  This may indicate missing voltage components or sign convention issues.")
+        
+        # Plot both battery voltage lines at the bottom of the stack
+        # 'top' after negative stacking equals OCV + positives + negatives = battery voltage
         fig.add_trace(
-            go.Scatter(x=time_hours, y=top, mode="lines",
-                      line=dict(color="black", dash="dash", width=1.5),
-                      name="Battery voltage (calculated)",
-                      legendgroup="Battery voltage calc",
-                      showlegend=(row_index == 1 and col_index == 1),
-                      hovertemplate="Battery voltage (calc): %{y:.6f} V<extra></extra>"),
+            go.Scatter(
+                x=time_hours,
+                y=top,  # Bottom of negative stack = OCV + positives + negatives = battery voltage
+                mode="lines",
+                line=dict(color="black", dash="dash", width=1.5),
+                name="Battery voltage (calculated)",
+                legendgroup="Battery voltage calc",
+                showlegend=(row_index == 1 and col_index == 1),
+                hovertemplate="Battery voltage (calc): %{y:.6f} V<extra></extra>",
+            ),
             row=row_index, col=col_index,
         )
         
+        # Always plot PyBaMM's battery voltage for comparison
         fig.add_trace(
-            go.Scatter(x=time_hours, y=voltage_flat, mode="lines",
-                      line=dict(color="red", dash="dot", width=1.5),
-                      name="Battery voltage (PyBaMM)",
-                      legendgroup="Battery voltage PyBaMM",
-                      showlegend=(row_index == 1 and col_index == 1),
-                      hovertemplate="Battery voltage (PyBaMM): %{y:.6f} V<extra></extra>"),
+            go.Scatter(
+                x=time_hours,
+                y=voltage_flat,  # PyBaMM's actual battery voltage
+                mode="lines",
+                line=dict(color="red", dash="dot", width=1.5),
+                name="Battery voltage (PyBaMM)",
+                legendgroup="Battery voltage PyBaMM",
+                showlegend=(row_index == 1 and col_index == 1),
+                hovertemplate="Battery voltage (PyBaMM): %{y:.6f} V<extra></extra>",
+            ),
             row=row_index, col=col_index,
         )
     
